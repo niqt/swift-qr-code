@@ -12,7 +12,6 @@
 		B31D71522B9C9FC60080C24B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B31D71512B9C9FC60080C24B /* Assets.xcassets */; };
 		B31D71552B9C9FC60080C24B /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B31D71542B9C9FC60080C24B /* Preview Assets.xcassets */; };
 		B31D715C2B9CACC90080C24B /* QrScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B31D715B2B9CACC90080C24B /* QrScannerView.swift */; };
-		B31D715E2B9CD76A0080C24B /* AppViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B31D715D2B9CD76A0080C24B /* AppViewModel.swift */; };
 		B31D71622B9E551B0080C24B /* SheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B31D71612B9E551B0080C24B /* SheetView.swift */; };
 /* End PBXBuildFile section */
 
@@ -23,7 +22,6 @@
 		B31D71512B9C9FC60080C24B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B31D71542B9C9FC60080C24B /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		B31D715B2B9CACC90080C24B /* QrScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QrScannerView.swift; sourceTree = "<group>"; };
-		B31D715D2B9CD76A0080C24B /* AppViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppViewModel.swift; sourceTree = "<group>"; };
 		B31D71612B9E551B0080C24B /* SheetView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SheetView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -59,7 +57,6 @@
 			children = (
 				B31D715B2B9CACC90080C24B /* QrScannerView.swift */,
 				B31D71612B9E551B0080C24B /* SheetView.swift */,
-				B31D715D2B9CD76A0080C24B /* AppViewModel.swift */,
 				B31D714D2B9C9FC50080C24B /* qreaderApp.swift */,
 				B31D714F2B9C9FC50080C24B /* ContentView.swift */,
 				B31D71512B9C9FC60080C24B /* Assets.xcassets */,
@@ -148,7 +145,6 @@
 			files = (
 				B31D715C2B9CACC90080C24B /* QrScannerView.swift in Sources */,
 				B31D71502B9C9FC50080C24B /* ContentView.swift in Sources */,
-				B31D715E2B9CD76A0080C24B /* AppViewModel.swift in Sources */,
 				B31D71622B9E551B0080C24B /* SheetView.swift in Sources */,
 				B31D714E2B9C9FC50080C24B /* qreaderApp.swift in Sources */,
 			);
