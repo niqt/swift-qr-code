@@ -1,0 +1,5 @@
+// Configurazione di build condivisa (versionata).
+// La chiave vera sta in Secrets.xcconfig, che NON va su git:
+// copia Secrets.example.xcconfig in Secrets.xcconfig e inserisci la tua chiave.
+GOOGLE_BOOKS_API_KEY =
+#include? "Secrets.xcconfig"
