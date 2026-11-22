@@ -79,6 +79,69 @@ struct VolumeInfo: Codable {
         }
 }
 
+/// ISBN validato, scritto in qualsiasi formato ammesso:
+/// "9788804668237", "978-88-04-66823-7", "88 04 66823 X", "ISBN-13: 978…", "isbn 88…".
+struct ISBN {
+    let isbn13: String
+    /// Esiste solo per i codici con prefisso 978
+    let isbn10: String?
+
+    init?(_ text: String) {
+        var raw = text.uppercased()
+        if let range = raw.range(of: "ISBN") {
+            raw.removeSubrange(raw.startIndex..<range.upperBound)
+        }
+        // Toglie l'eventuale "-13:" / "-10" / " 13 " che segue "ISBN"
+        raw = raw.trimmingCharacters(in: .whitespaces)
+        if let range = raw.range(of: #"^-?1[03](\s*:|\s+)"#, options: .regularExpression) {
+            raw.removeSubrange(range)
+        }
+        let chars = raw.filter { !" -:.\u{2010}\u{2011}\u{2013}".contains($0) }
+        guard chars.allSatisfy({ $0.isASCII && ($0.isNumber || $0 == "X") }) else { return nil }
+
+        if chars.count == 13, chars.allSatisfy(\.isNumber), ISBN.isValid13(chars) {
+            isbn13 = chars
+            isbn10 = chars.hasPrefix("978") ? ISBN.to10(chars) : nil
+        } else if chars.count == 10, ISBN.isValid10(chars) {
+            isbn10 = chars
+            isbn13 = ISBN.to13(chars)
+        } else {
+            return nil
+        }
+    }
+
+    private static func digits(_ s: String) -> [Int] {
+        s.map { $0 == "X" ? 10 : Int(String($0))! }
+    }
+
+    static func isValid13(_ s: String) -> Bool {
+        let d = digits(s)
+        let sum = d.enumerated().reduce(0) { $0 + $1.element * ($1.offset.isMultiple(of: 2) ? 1 : 3) }
+        return sum % 10 == 0
+    }
+
+    static func isValid10(_ s: String) -> Bool {
+        // La X è ammessa solo come cifra di controllo
+        guard s.dropLast().allSatisfy(\.isNumber) else { return false }
+        let d = digits(s)
+        let sum = d.enumerated().reduce(0) { $0 + $1.element * (10 - $1.offset) }
+        return sum % 11 == 0
+    }
+
+    private static func to13(_ isbn10: String) -> String {
+        let body = "978" + isbn10.dropLast()
+        let sum = digits(body).enumerated().reduce(0) { $0 + $1.element * ($1.offset.isMultiple(of: 2) ? 1 : 3) }
+        return body + String((10 - sum % 10) % 10)
+    }
+
+    private static func to10(_ isbn13: String) -> String {
+        let body = String(isbn13.dropFirst(3).dropLast())
+        let sum = digits(body).enumerated().reduce(0) { $0 + $1.element * (10 - $1.offset) }
+        let check = (11 - sum % 11) % 11
+        return body + (check == 10 ? "X" : String(check))
+    }
+}
+
 struct ImagesLink: Codable {
     var smallThumbnail: String?
 }
@@ -202,9 +265,13 @@ class BookViewModel {
         case Loading, Loaded, Error
     }
     
-    func loadBooks(isbn: String) async {
-        state = .Loading
-        errorMessage = ""
+    /// Errore della ricerca su Google Books, già con il messaggio da mostrare.
+    struct LookupError: Error {
+        let message: String
+    }
+
+    /// Chiede a Google Books i volumi con questo ISBN.
+    private func fetchGoogleBooks(isbn: String) async throws -> [GoogleBook] {
         var components = URLComponents(string: "https://www.googleapis.com/books/v1/volumes")
         components?.queryItems = [URLQueryItem(name: "q", value: "isbn:\(isbn)")]
         let apiKey = UserDefaults.standard.string(forKey: "googleBooksApiKey") ?? ""
@@ -212,59 +279,68 @@ class BookViewModel {
             components?.queryItems?.append(URLQueryItem(name: "key", value: apiKey))
         }
         guard let url = components?.url else {
-            print("Invalid URL")
-            errorMessage = "Codice non valido: \(isbn)"
-            state = .Error
-            return
+            throw LookupError(message: "Codice non valido: \(isbn)")
         }
+        let data: Data
+        let response: URLResponse
         do {
-            let (data, response) = try await URLSession.shared.data(from: url)
-            let decoder = JSONDecoder()
-            // Google risponde con un oggetto "error" (es. 429 quota esaurita):
-            // non va confuso con "nessun libro trovato"
-            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-                let apiError = try? decoder.decode(GoogleAPIError.self, from: data)
-                print("Google Books error \(http.statusCode):", apiError?.error.message ?? "")
-                if http.statusCode == 429 {
-                    errorMessage = "Quota di Google Books esaurita. Imposta una API key nelle impostazioni."
-                } else {
-                    errorMessage = "Errore Google Books (\(http.statusCode)): \(apiError?.error.message ?? "")"
-                }
-                state = .Error
-                return
-            }
-            do {
-                let decodedResponse = try decoder.decode(GoogleBooks.self, from: data)
-                books = decodedResponse.items
-                if books.isEmpty {
-                    errorMessage = "Nessun libro trovato per \(isbn)"
-                    state = .Error
-                    return
-                }
-                books[0].volumeInfo?.isbn13 = isbn
-                books[0].volumeInfo?.isbn10 = isbn
-                state = .Loaded
-                return
-            } catch let DecodingError.dataCorrupted(context) {
-                print(context)
-            } catch let DecodingError.keyNotFound(key, context) {
-                print("Key '\(key)' not found:", context.debugDescription)
-                print("codingPath:", context.codingPath)
-            } catch let DecodingError.valueNotFound(value, context) {
-                print("Value '\(value)' not found:", context.debugDescription)
-                print("codingPath:", context.codingPath)
-            } catch let DecodingError.typeMismatch(type, context)  {
-                print("Type '\(type)' mismatch:", context.debugDescription)
-                print("codingPath:", context.codingPath)
-            } catch {
-                print("error: ", error)
-            }
-            errorMessage = "Errore nella lettura dei dati del libro"
+            (data, response) = try await URLSession.shared.data(from: url)
         } catch {
             print("error: ", error)
-            errorMessage = "Errore nella richiesta: \(error.localizedDescription)"
+            throw LookupError(message: "Errore nella richiesta: \(error.localizedDescription)")
         }
-        state = .Error
+        let decoder = JSONDecoder()
+        // Google risponde con un oggetto "error" (es. 429 quota esaurita):
+        // non va confuso con "nessun libro trovato"
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            let apiError = try? decoder.decode(GoogleAPIError.self, from: data)
+            print("Google Books error \(http.statusCode):", apiError?.error.message ?? "")
+            if http.statusCode == 429 {
+                throw LookupError(message: "Quota di Google Books esaurita. Imposta una API key nelle impostazioni.")
+            }
+            throw LookupError(message: "Errore Google Books (\(http.statusCode)): \(apiError?.error.message ?? "")")
+        }
+        do {
+            let items = try decoder.decode(GoogleBooks.self, from: data).items
+            if items.isEmpty {
+                throw LookupError(message: "Nessun libro trovato per \(isbn)")
+            }
+            return items
+        } catch let error as LookupError {
+            throw error
+        } catch {
+            print("decoding error: ", error)
+            throw LookupError(message: "Errore nella lettura dei dati del libro")
+        }
+    }
+
+    func loadBooks(isbn: String) async {
+        state = .Loading
+        errorMessage = ""
+        do {
+            books = try await fetchGoogleBooks(isbn: isbn)
+            books[0].volumeInfo?.isbn13 = isbn
+            books[0].volumeInfo?.isbn10 = isbn
+            state = .Loaded
+        } catch {
+            errorMessage = (error as? LookupError)?.message ?? error.localizedDescription
+            state = .Error
+        }
+    }
+
+    /// Cerca i dati di un libro senza toccare `books` né `state` (usato dall'inserimento manuale).
+    func lookup(isbn: ISBN) async -> Result<VolumeInfo, LookupError> {
+        do {
+            let items = try await fetchGoogleBooks(isbn: isbn.isbn13)
+            guard var info = items.first(where: { $0.volumeInfo != nil })?.volumeInfo else {
+                return .failure(LookupError(message: "Nessun libro trovato per \(isbn.isbn13)"))
+            }
+            info.isbn13 = isbn.isbn13
+            info.isbn10 = isbn.isbn10
+            return .success(info)
+        } catch {
+            return .failure((error as? LookupError) ?? LookupError(message: error.localizedDescription))
+        }
     }
 
     func reset() {
